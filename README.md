@@ -4,6 +4,8 @@ A terrain-first WebGL viewer for inspecting Kauaʻi topography, basin-contained
 standing water, authoritative NHD river centerlines, and coastline-aware ocean
 coverage. This repository intentionally contains no ant gameplay yet.
 
+**Live viewer:** https://capflyingfun.github.io/TMB/
+
 ## Run locally
 
 ```bash
