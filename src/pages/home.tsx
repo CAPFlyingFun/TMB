@@ -8,7 +8,7 @@ import type { TerrainScene } from '@/lib/three-scene';
 import { TelemetryOverlay } from '@/components/viewer/telemetry-overlay';
 import { ControlsPanel } from '@/components/viewer/controls-panel';
 import { LocationsPanel } from '@/components/viewer/locations-panel';
-import { Compass, Crosshair } from 'lucide-react';
+import { Compass, Crosshair, Layers, MapPin, X } from 'lucide-react';
 
 const INITIAL_STATE: ViewerState = {
   layers: {
@@ -30,6 +30,17 @@ export default function Home() {
   const sceneRef = useRef<TerrainScene | null>(null);
   
   const [viewerState, setViewerState] = useState<ViewerState>(INITIAL_STATE);
+  /**
+   * WHICH PANEL A PHONE IS SHOWING, or none.
+   *
+   * On a desktop all three panels can sit in the corners and still
+   * leave the island in the middle. On a 390 px screen they stack and
+   * cover roughly three quarters of it, which is the whole complaint:
+   * you cannot inspect terrain you cannot see. Below `md` they collapse
+   * to two buttons and open one at a time; at `md` and up nothing about
+   * the existing layout changes.
+   */
+  const [sheet, setSheet] = useState<'layers' | 'places' | null>(null);
   const [telemetry, setTelemetry] = useState<TelemetryData>({
     lat: 22.05,
     lon: -159.55,
@@ -118,7 +129,12 @@ export default function Home() {
   };
 
   return (
-    <div className="relative w-full h-screen overflow-hidden bg-background text-foreground select-none">
+    // 100dvh, NOT 100vh. On iOS Safari `h-screen` counts the strip
+    // behind the address bar and the toolbar, so the layout is taller
+    // than what you can actually see and whatever sits at the bottom
+    // falls off the edge — which is why the saved-vector list was cut
+    // in half on a phone. The dynamic viewport unit is the visible box.
+    <div className="relative w-full h-[100dvh] overflow-hidden bg-background text-foreground select-none">
       <canvas ref={canvasRef} className="absolute inset-0 w-full h-full z-0" />
 
       {status.phase === 'error' && (
@@ -140,10 +156,14 @@ export default function Home() {
       )}
       
       {/* UI Overlay */}
-      <div className="absolute inset-0 z-10 pointer-events-none flex flex-col justify-between p-4 md:p-6">
+      {/* SAFE AREA AT THE BOTTOM. The phone control bar sits where iOS
+          draws the home indicator, and a 44 px target half-covered by a
+          system gesture strip is a target you fight. `env()` is zero on
+          everything that has no notch, so this costs desktop nothing. */}
+      <div className="absolute inset-0 z-10 pointer-events-none flex flex-col justify-between p-4 pb-[max(1rem,env(safe-area-inset-bottom))] md:p-6">
         
         {/* Top Header & Telemetry */}
-        <div className="flex justify-between items-start">
+        <div className="flex justify-between items-start gap-2 min-w-0">
           <div className="flex items-center gap-3 bg-card/80 backdrop-blur-md border border-border p-3 rounded-lg shadow-xl pointer-events-auto">
             <div className="w-10 h-10 rounded bg-primary/20 flex items-center justify-center border border-primary/30">
               <Compass className="w-6 h-6 text-primary" />
@@ -179,8 +199,8 @@ export default function Home() {
           <Crosshair className="w-8 h-8 text-primary" />
         </div>
         
-        {/* Bottom Controls */}
-        <div className="flex flex-col md:flex-row justify-between items-end gap-4 mt-auto">
+        {/* Bottom Controls — desktop, unchanged */}
+        <div className="hidden md:flex flex-row justify-between items-end gap-4 mt-auto">
           <div className="flex flex-col gap-4">
             <ControlsPanel 
               state={viewerState} 
@@ -197,6 +217,62 @@ export default function Home() {
           
           <LocationsPanel onJump={handleJump} />
         </div>
+
+        {/* Bottom Controls — phone. One panel at a time, over a bar. */}
+        <div className="md:hidden mt-auto flex flex-col gap-3">
+          {sheet !== null && (
+            <div className="pointer-events-auto max-h-[45dvh] overflow-y-auto rounded-lg">
+              {sheet === 'layers' ? (
+                <ControlsPanel
+                  state={viewerState}
+                  onUpdateLayer={updateLayer}
+                  onUpdateDiagnostic={updateDiagnostic}
+                />
+              ) : (
+                <LocationsPanel onJump={(lat, lon, elev) => {
+                  handleJump(lat, lon, elev);
+                  // Jumping is the last thing you want the panel for, and
+                  // the view you jumped to is behind it.
+                  setSheet(null);
+                }} />
+              )}
+            </div>
+          )}
+
+          <div className="pointer-events-auto flex items-center gap-2">
+            <SheetButton
+              icon={<Layers className="w-4 h-4" />}
+              label="Layers"
+              active={sheet === 'layers'}
+              onClick={() => setSheet(sheet === 'layers' ? null : 'layers')}
+            />
+            <SheetButton
+              icon={<MapPin className="w-4 h-4" />}
+              label="Places"
+              active={sheet === 'places'}
+              onClick={() => setSheet(sheet === 'places' ? null : 'places')}
+            />
+            {sheet !== null && (
+              <button
+                onClick={() => setSheet(null)}
+                aria-label="Close panel"
+                className="ml-auto flex h-10 w-10 items-center justify-center rounded-lg border border-border bg-card/80 text-muted-foreground shadow-xl backdrop-blur-md active:bg-primary/20"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            )}
+          </div>
+
+          {/* THE GESTURES ALREADY WORKED; the caption was the problem.
+              OrbitControls handles touch natively — one finger orbits,
+              two pan and pinch — so a phone was being told to use a
+              mouse it does not have. */}
+          {sheet === null && (
+            <div className="pointer-events-auto w-max rounded-lg border border-border bg-card/80 px-3 py-2 font-mono text-[11px] text-muted-foreground shadow-xl backdrop-blur-md">
+              <span className="text-foreground">1 finger</span>: Orbit &nbsp;|&nbsp; <span className="text-foreground">2</span>: Pan &nbsp;|&nbsp; <span className="text-foreground">Pinch</span>: Zoom
+            </div>
+          )}
+        </div>
       </div>
 
       <div className="absolute left-1/2 top-4 z-20 hidden -translate-x-1/2 items-center gap-3 rounded-lg border border-border bg-card/80 px-4 py-2 font-mono text-[10px] text-muted-foreground shadow-xl backdrop-blur-md md:flex">
@@ -211,5 +287,30 @@ export default function Home() {
         )}
       </div>
     </div>
+  );
+}
+
+/** One tab of the phone control bar. Forty-four pixels, deliberately. */
+function SheetButton({
+  icon, label, active, onClick,
+}: {
+  icon: React.ReactNode;
+  label: string;
+  active: boolean;
+  onClick: () => void;
+}) {
+  return (
+    <button
+      onClick={onClick}
+      aria-pressed={active}
+      className={`flex h-11 items-center gap-2 rounded-lg border px-3 text-xs font-medium shadow-xl backdrop-blur-md transition-colors ${
+        active
+          ? 'border-primary/40 bg-primary/20 text-primary'
+          : 'border-border bg-card/80 text-muted-foreground'
+      }`}
+    >
+      {icon}
+      {label}
+    </button>
   );
 }

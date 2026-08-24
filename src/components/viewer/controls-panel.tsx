@@ -11,7 +11,7 @@ interface ControlsPanelProps {
 export function ControlsPanel({ state, onUpdateLayer, onUpdateDiagnostic }: ControlsPanelProps) {
   return (
     <div className="flex flex-col md:flex-row gap-4 pointer-events-auto">
-      <div className="bg-card/80 backdrop-blur-md border border-border p-4 rounded-lg shadow-xl w-64 flex flex-col gap-4">
+      <div className="bg-card/80 backdrop-blur-md border border-border p-4 rounded-lg shadow-xl w-full md:w-64 flex flex-col gap-4">
         <div className="flex items-center gap-2 text-sm font-bold text-foreground">
           <Layers className="w-4 h-4 text-primary" />
           ENVIRONMENT LAYERS
@@ -24,7 +24,7 @@ export function ControlsPanel({ state, onUpdateLayer, onUpdateDiagnostic }: Cont
         </div>
       </div>
 
-      <div className="bg-card/80 backdrop-blur-md border border-border p-4 rounded-lg shadow-xl w-64 flex flex-col gap-4">
+      <div className="bg-card/80 backdrop-blur-md border border-border p-4 rounded-lg shadow-xl w-full md:w-64 flex flex-col gap-4">
         <div className="flex items-center gap-2 text-sm font-bold text-foreground">
           <Activity className="w-4 h-4 text-primary" />
           DIAGNOSTICS

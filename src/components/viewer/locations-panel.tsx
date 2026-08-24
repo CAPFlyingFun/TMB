@@ -13,7 +13,7 @@ const LOCATIONS = [
 
 export function LocationsPanel({ onJump }: LocationsPanelProps) {
   return (
-    <div className="bg-card/80 backdrop-blur-md border border-border p-4 rounded-lg shadow-xl w-64 pointer-events-auto flex flex-col gap-3">
+    <div className="bg-card/80 backdrop-blur-md border border-border p-4 rounded-lg shadow-xl w-full md:w-64 pointer-events-auto flex flex-col gap-3">
       <div className="flex items-center gap-2 text-sm font-bold text-foreground border-b border-white/5 pb-2">
         <MapPin className="w-4 h-4 text-primary" />
         SAVED VECTORS
