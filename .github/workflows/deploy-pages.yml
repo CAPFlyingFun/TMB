@@ -1,0 +1,68 @@
+name: Deploy TMB to GitHub Pages
+
+# Pages is served from https://capflyingfun.github.io/TMB/, so the site
+# lives under a sub-path rather than at a domain root. Vite has to be
+# told that at BUILD time — every asset URL and every data fetch is
+# rewritten with it — which is what BASE_PATH does below. Building with
+# the default '/' produces a page that loads nothing but its own HTML.
+on:
+  push:
+    branches:
+      - main
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+# One deploy at a time, and let a running one finish. Cancelling a
+# half-finished Pages deploy can leave the site on a partial upload.
+concurrency:
+  group: pages
+  cancel-in-progress: false
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out
+        uses: actions/checkout@v4
+
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      # `npm install`, NOT `npm ci`. There is no lockfile committed, and
+      # `npm ci` refuses to run without one rather than falling back.
+      # If a package-lock.json is ever committed, switch this to
+      # `npm ci` and add `cache: npm` to the step above — it is faster
+      # and it makes the build reproducible, which this is not.
+      - name: Install dependencies
+        run: npm install --no-audit --no-fund
+
+      - name: Build for the /TMB/ sub-path
+        env:
+          BASE_PATH: /TMB/
+        run: npm run build
+
+      - name: Configure Pages
+        uses: actions/configure-pages@v5
+
+      # vite.config.ts sends output to dist/public, not dist.
+      - name: Upload the site
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: dist/public
+
+  deploy:
+    needs: build
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - name: Deploy
+        id: deployment
+        uses: actions/deploy-pages@v4
