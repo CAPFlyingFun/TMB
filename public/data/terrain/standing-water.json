@@ -1,0 +1,22 @@
+{
+  "method": "Regional priority flood with connected-component spill ownership",
+  "bounds": [
+    -160,
+    21.75,
+    -159.25,
+    22.25
+  ],
+  "width": 1537,
+  "height": 1025,
+  "posting": "Approximately 50 meters",
+  "minimumDepthMeters": 1,
+  "minimumConnectedCells": 8,
+  "quantization": {
+    "offsetMeters": -12000,
+    "scaleMeters": 0.25,
+    "noDataValue": 65535
+  },
+  "byteLength": 3150850,
+  "sha256": "9f1e0abda579d22312a5858a841c4ff70b4d12ac073fdae34636722945c47a41",
+  "url": "data/terrain/standing-water.bin"
+}
