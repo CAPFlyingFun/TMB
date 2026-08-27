@@ -76,6 +76,19 @@ export default function Home() {
           setStatus,
         );
         sceneRef.current = scene;
+        // ANT-SCALE PROBE HANDLE. Disposable: it exists so a headless
+        // run can stand the camera a stated number of metres above the
+        // ground and look, which is the whole of this experiment.
+        const live = scene;
+        (window as unknown as Record<string, unknown>).__tmb = {
+          standAt: (lat: number, lon: number, agl: number, heading = 0) =>
+            live.standAt(lat, lon, agl, heading),
+          jumpTo: (lat: number, lon: number, alt: number) => live.jumpTo(lat, lon, alt),
+          placeQueen: (lat: number, lon: number, mm?: number) =>
+            live.placeQueen(lat, lon, mm),
+          watchQueen: (lat: number, lon: number, back: number, heading = 0) =>
+            live.watchQueen(lat, lon, back, heading),
+        };
       } catch (error) {
         if (cancelled) return;
         const message =

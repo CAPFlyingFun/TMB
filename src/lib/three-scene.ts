@@ -11,6 +11,7 @@ import {
 } from '@/lib/terrain/terrain-lod';
 import { createOceanMaterial } from '@/lib/water/water-materials';
 import { createRiverNetworkMesh } from '@/lib/water/river-mesh';
+import { loadQueen, QUEEN_START_MM, type Queen } from '@/lib/ant/queen';
 
 export interface ViewerState {
   layers: {
@@ -72,6 +73,7 @@ export class TerrainScene {
   private riverLodLevel = 0;
   private rebuildingRivers = false;
   private farOceanMeshes: THREE.Mesh[] = [];
+  private queen?: Queen;
   private disposed = false;
 
   constructor(
@@ -88,24 +90,34 @@ export class TerrainScene {
     this.scene.fog = new THREE.Fog(0x9ac6d5, 65_000, 230_000);
     this.scene.add(this.worldRoot);
 
-    this.camera = new THREE.PerspectiveCamera(48, 1, 1, 500_000);
+    this.camera = new THREE.PerspectiveCamera(48, 1, 0.004, 500_000);
     this.camera.position.set(28_000, 31_000, 38_000);
 
     this.renderer = new THREE.WebGLRenderer({
       canvas,
       antialias: true,
+      // A 4 mm near plane against a 500 km far plane is a depth ratio no
+      // fixed-point buffer survives. The ant-scale look needs both ends.
+      logarithmicDepthBuffer: true,
       powerPreference: 'high-performance',
     });
     this.renderer.outputColorSpace = THREE.SRGBColorSpace;
     this.renderer.toneMapping = THREE.ACESFilmicToneMapping;
-    this.renderer.toneMappingExposure = 1.05;
+    // ANT-SCALE TEST: the viewer is lit for looking DOWN at an island
+    // from orbit, where a dark palette reads well. Standing in it, the
+    // same palette is nearly black. Lifted so ground level is legible;
+    // this changes the LOOK and nothing about where the water is.
+    this.renderer.toneMappingExposure = 1.9;
     this.renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
     this.resize();
 
     this.controls = new OrbitControls(this.camera, canvas);
     this.controls.enableDamping = true;
     this.controls.dampingFactor = 0.065;
-    this.controls.minDistance = 35;
+    // 35 m was the closest this viewer would let you get. At ant scale
+    // that is 3,500 body lengths, so the camera could never stand in
+    // the world it was drawing.
+    this.controls.minDistance = 0.005;
     this.controls.maxDistance = 190_000;
     this.controls.maxPolarAngle = Math.PI * 0.495;
     this.controls.target.set(0, 450, 0);
@@ -225,6 +237,9 @@ export class TerrainScene {
     const sun = new THREE.DirectionalLight(0xfff2d0, 3.1);
     sun.position.set(-35_000, 55_000, 18_000);
     this.scene.add(sun);
+    // A little fill, so a slope facing away from that sun is still a
+    // slope rather than a silhouette.
+    this.scene.add(new THREE.AmbientLight(0xbfd8e6, 0.9));
   }
 
   private setupFarOcean(
@@ -277,10 +292,82 @@ export class TerrainScene {
     }
   }
 
+  /** Stand the camera a given height above the ground, looking level. */
+  public standAt(lat: number, lon: number, agl: number, heading = 0) {
+    const target = geographicToWorld(lon, lat);
+    const ground = this.terrainLod.source.sampleHeightAtWorld(target.x, target.z);
+    const localX = target.x - this.floatingOrigin.x;
+    const localZ = target.z - this.floatingOrigin.z;
+    const rad = (heading * Math.PI) / 180;
+    // The look-at point rides OUT with height, or the camera pitches
+    // steeply down the moment it climbs: a fixed 40 m target at 300 m
+    // up is a 72-degree dive, which photographs the ground under the
+    // lens rather than the valley.
+    // The target rides out with height, and comes right in at ant
+    // scale so OrbitControls' own minimum cannot hold the camera off.
+    const out = Math.max(agl * 6, agl < 1 ? 0.05 : 15);
+    this.camera.position.set(localX, ground + agl, localZ);
+    this.controls.target.set(
+      localX + Math.sin(rad) * out,
+      ground + agl * 0.35,
+      localZ - Math.cos(rad) * out,
+    );
+    this.controls.update();
+    this.lastLodUpdate = 0;
+  }
+
+  /**
+   * Stand the queen on the ground at a coordinate, at her real size.
+   *
+   * She joins `worldRoot` in absolute world metres, like the terrain,
+   * so the floating origin carries her with everything else. Returns
+   * her length in metres and the ground she is standing on.
+   */
+  public async placeQueen(
+    lat: number,
+    lon: number,
+    lengthMm = QUEEN_START_MM,
+  ): Promise<{ length: number; ground: number }> {
+    const target = geographicToWorld(lon, lat);
+    const ground = this.terrainLod.source.sampleHeightAtWorld(target.x, target.z);
+    if (this.queen) {
+      this.worldRoot.remove(this.queen.model);
+      this.queen.dispose();
+      this.queen = undefined;
+    }
+    const queen = await loadQueen(lengthMm);
+    if (this.disposed) {
+      queen.dispose();
+      return { length: queen.length, ground };
+    }
+    queen.model.position.set(target.x, ground + queen.model.position.y, target.z);
+    this.worldRoot.add(queen.model);
+    this.queen = queen;
+    return { length: queen.length, ground };
+  }
+
+  /** Stand the camera behind the queen, looking at her. */
+  public watchQueen(lat: number, lon: number, back: number, heading = 0) {
+    const target = geographicToWorld(lon, lat);
+    const ground = this.terrainLod.source.sampleHeightAtWorld(target.x, target.z);
+    const localX = target.x - this.floatingOrigin.x;
+    const localZ = target.z - this.floatingOrigin.z;
+    const rad = (heading * Math.PI) / 180;
+    const size = this.queen?.length ?? 0.006;
+    this.camera.position.set(
+      localX - Math.sin(rad) * back,
+      ground + size * 0.9,
+      localZ + Math.cos(rad) * back,
+    );
+    this.controls.target.set(localX, ground + size * 0.4, localZ);
+    this.controls.update();
+    this.lastLodUpdate = 0;
+  }
+
   public jumpTo(lat: number, lon: number, requestedAltitude: number) {
     const target = geographicToWorld(lon, lat);
     const ground = this.terrainLod.source.sampleHeightAtWorld(target.x, target.z);
-    const altitude = Math.max(requestedAltitude, 1_400);
+    const altitude = Math.max(requestedAltitude, 0.004);
     const localX = target.x - this.floatingOrigin.x;
     const localZ = target.z - this.floatingOrigin.z;
     this.controls.target.set(localX, ground, localZ);
@@ -317,7 +404,7 @@ export class TerrainScene {
     if (forwardInput === 0 && sideInput === 0 && verticalInput === 0) return;
 
     const speed =
-      Math.max(40, Math.min(4_000, this.camera.position.y * 0.35)) *
+      Math.max(0.02, Math.min(4_000, this.camera.position.y * 0.35)) *
       (this.keys.has('ShiftLeft') || this.keys.has('ShiftRight') ? 3 : 1);
     const forward = new THREE.Vector3();
     this.camera.getWorldDirection(forward);
@@ -442,6 +529,11 @@ export class TerrainScene {
     window.removeEventListener('keydown', this.handleKeyDown);
     window.removeEventListener('keyup', this.handleKeyUp);
     this.terrainLod.dispose();
+    if (this.queen) {
+      this.worldRoot.remove(this.queen.model);
+      this.queen.dispose();
+      this.queen = undefined;
+    }
     if (this.riverNetwork) {
       this.worldRoot.remove(this.riverNetwork.group);
       this.riverNetwork.dispose();
